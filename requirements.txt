@@ -1,2 +1,6 @@
 streamlit
 openai
+yfinance
+beautifulsoup4
+requests
+newspaper3k
