@@ -1,4 +1,4 @@
-# Indian Stock AI Multi-Agent System with LangChain, OpenAI, IndianAPI, and Streamlit UI
+# Indian Stock AI Multi-Agent System with Full Financial Analysis
 
 # ---- STEP 0: Setup ----
 # Requirements:
@@ -21,59 +21,77 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
 llm = OpenAI(temperature=0)
 
-# --- Helper: Fetch stock data ---
-def extract_eps_from_financials(financials):
+# --- Data Extraction Helpers ---
+def extract_eps(financials):
     for fin in financials:
         try:
             for item in fin['stockFinancialMap']['INC']:
                 if item['key'] == 'DilutedEPSExcludingExtraOrdItems':
                     return float(item['value'])
         except: continue
-    return None
+    return 0
 
-def extract_metrics(peer_list, company_name):
-    for peer in peer_list:
-        if peer['companyName'].lower() in company_name.lower():
-            return {
-                'peRatio': float(peer.get('priceToEarningsValueRatio', 0) or 0),
-                'bookValue': float(peer.get('priceToBookValueRatio', 0) or 0)
-            }
+def extract_metrics_from_keymetrics(key_metrics):
+    growth = key_metrics.get("growth", {})
+    valuation = key_metrics.get("valuation", {})
+    return {
+        'peRatio': float(growth.get('priceToEarnings', 12) or 12),
+        'bookValue': float(valuation.get('bookValuePerShare', 100) or 100)
+    }
     return {'peRatio': 12, 'bookValue': 100}
 
+def extract_news(news_list):
+    return " ".join([f"{n['title']}: {n['description']}" for n in news_list])
+
+def extract_shareholding_info(data):
+    if not data: return ""
+    parts = []
+    for item in data:
+        parts.append(f"{item['name']}: {item['percentage']}%")
+    return ", ".join(parts)
+
+# --- API Integration ---
 def fetch_stock_data(ticker):
     url = f"https://indianapi.in/indian-stock-market/stock?name={ticker}"
     headers = {"Authorization": f"Bearer {API_KEY}"}
     r = requests.get(url, headers=headers)
     r.raise_for_status()
     data = r.json()
-    
-    eps = extract_eps_from_financials(data.get("financials", []))
-    metrics = extract_metrics(data.get("peerCompanyList", []), data.get("companyName", ""))
+
+    company_name = data.get("companyName", "")
+    eps = extract_eps(data.get("financials", []))
+    metrics = extract_metrics_from_keymetrics(data.get("keyMetrics", {}))
     price = float(data.get("currentPrice", {}).get("NSE") or data.get("currentPrice", {}).get("BSE") or 0)
 
     return {
         "ticker": ticker,
-        "companyName": data.get("companyName", ""),
+        "companyName": company_name,
         "sector": data.get("industry", ""),
         "price": price,
-        "eps": eps or 0,
+        "eps": eps,
         "pe": metrics['peRatio'],
         "bookValue": metrics['bookValue'],
-        "news": data.get("companyProfile", {}).get("companyDescription", "")
+        "news": extract_news(data.get("recentNews", [])),
+        "shareholding": extract_shareholding_info(data.get("shareholding", {}).get("data", [])),
+        "technical": data.get("stockTechnicalData", {}),
+        "keyMetrics": data.get("keyMetrics", {}),
+        "analystView": data.get("analystView", {}),
+        "recosBar": data.get("recosBar", {}),
+        "details": data.get("stockDetailsReusableData", {}),
+        "ratios": data.get("stockFinancialData", {})
     }
 
-# --- Tool: Sentiment Chain ---
+# --- Prompt Chains ---
 sentiment_prompt = PromptTemplate.from_template("""
-Classify this news/text as Bullish, Neutral, or Bearish. Also summarize major insights in 2 lines:
+Based on the following news, key metrics, and recent developments, classify this stock as Bullish, Neutral or Bearish. Explain the sentiment in 2 lines:
 
 {text}
 """)
 sentiment_chain = sentiment_prompt | llm
 
-def get_sentiment(news_text):
-    return sentiment_chain.invoke({"text": news_text}).strip()
+def get_sentiment(text):
+    return sentiment_chain.invoke({"text": text}).strip()
 
-# --- Tool: Web Transcript Search ---
 def scrape_web_info(query):
     links = list(search(query, num_results=3))
     summaries = []
@@ -101,7 +119,7 @@ def analyze_concall(ticker):
         return concall_chain.invoke({"transcript": content}).strip()
     return "No transcript data found."
 
-# --- Tool: Valuation ---
+# --- Valuation ---
 def intrinsic_value(eps, pe, book, sector):
     if sector.lower() in ["it", "technology"]:
         return eps * 15
@@ -110,28 +128,33 @@ def intrinsic_value(eps, pe, book, sector):
     else:
         return eps * pe
 
-# --- Stock Analyzer ---
+# --- Core Analyzer ---
 def analyze_stock(ticker):
     try:
         d = fetch_stock_data(ticker)
-        sentiment = get_sentiment(d["news"])
-        iv = intrinsic_value(d["eps"], d["pe"], d["bookValue"], d["sector"])
+        info_text = f"NEWS: {d['news']}\nMETRICS: {d['keyMetrics']}\nANALYST VIEW: {d['analystView']}\nSHAREHOLDING: {d['shareholding']}"
+        sentiment = get_sentiment(info_text)
+        iv = intrinsic_value(d['eps'], d['pe'], d['bookValue'], d['sector'])
         concall_summary = analyze_concall(ticker)
 
         return {
             "ticker": ticker,
-            "sector": d["sector"],
-            "price": d["price"],
+            "sector": d['sector'],
+            "price": d['price'],
             "intrinsic": round(iv, 2),
             "buy_range": f"{iv*0.9:.2f}-{iv:.2f}",
             "sell_range": f"{iv:.2f}-{iv*1.1:.2f}",
             "sentiment": sentiment,
-            "concall": concall_summary
+            "shareholding": d['shareholding'],
+            "concall": concall_summary,
+            "pe": d['pe'],
+            "bookValue": d['bookValue'],
+            "eps": d['eps']
         }
     except Exception as e:
         return {"ticker": ticker, "error": str(e)}
 
-# --- Orchestrator ---
+# --- Aggregator ---
 def run_analysis(tickers):
     results = [analyze_stock(t.strip()) for t in tickers]
     df = pd.DataFrame(results)
@@ -156,6 +179,8 @@ if input_str:
                 st.markdown(f"### {r['ticker']}")
                 st.write(f"**Sector:** {r['sector']}  |  **Price:** ₹{r['price']}  |  **IV:** ₹{r['intrinsic']}")
                 st.write(f"**Buy Range:** {r['buy_range']}  |  **Sell Range:** {r['sell_range']}")
+                st.write(f"**P/E:** {r['pe']}  |  **Book Value:** {r['bookValue']}  |  **EPS:** {r['eps']}")
                 st.write(f"**Sentiment & Summary:** {r['sentiment']}")
+                st.write(f"**Shareholding Pattern:** {r['shareholding']}")
                 st.write(f"**Earnings Call Summary:** {r['concall']}")
                 st.markdown("---")
