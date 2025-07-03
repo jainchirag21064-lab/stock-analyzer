@@ -27,6 +27,7 @@ def fetch_stock_data(ticker):
     r = requests.get(url, headers=headers)
     r.raise_for_status()
     data = r.json()
+    print(f"fetch_stock_data"+data)
     return {
         "ticker": data["tickerId"],
         "price": (data["currentPrice"]["NSE"] or data["currentPrice"]["BSE"]),
