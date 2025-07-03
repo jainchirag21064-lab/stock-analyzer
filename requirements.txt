@@ -1,7 +1,10 @@
 streamlit
+langchain
 openai
 yfinance
 beautifulsoup4
 requests
 newspaper3k
 lxml_html_clean 
+pandas    
+googlesearch-python
