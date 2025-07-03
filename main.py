@@ -7,7 +7,7 @@ import openai
 import newspaper
 from newspaper import Article
 
-openai.api_key = "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"
+openai.api_key = ""
 
 st.set_page_config(page_title="Agentic AI Stock Analyzer", layout="wide")
 st.title("📈 Agentic AI Stock Analyzer")
