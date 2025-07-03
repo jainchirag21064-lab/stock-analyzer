@@ -63,8 +63,7 @@ def fetch_stock_data(ticker):
     metrics = extract_metrics_from_keymetrics(data.get("keyMetrics", {}))
     price = float(data.get("currentPrice", {}).get("NSE") or data.get("currentPrice", {}).get("BSE") or 0)
 
-    return {
-        "ticker": ticker,
+                "ticker": ticker,
         "companyName": company_name,
         "sector": data.get("industry", ""),
         "price": price,
@@ -122,9 +121,11 @@ def analyze_concall(ticker):
 # --- Valuation ---
 def intrinsic_value(eps, pe, book, sector):
     if sector.lower() in ["it", "technology"]:
-        return eps * 15
+        return eps * 18  # Higher PE for tech growth
     elif sector.lower() in ["banking", "finance"]:
-        return book * 1.3
+        return book * 1.5  # Slightly higher than historical P/B
+    elif sector.lower() in ["energy", "commodities"]:
+        return eps * 8  # Lower PE due to cyclical nature
     else:
         return eps * pe
 
@@ -132,10 +133,18 @@ def intrinsic_value(eps, pe, book, sector):
 def analyze_stock(ticker):
     try:
         d = fetch_stock_data(ticker)
-        info_text = f"NEWS: {d['news']}\nMETRICS: {d['keyMetrics']}\nANALYST VIEW: {d['analystView']}\nSHAREHOLDING: {d['shareholding']}"
+        info_text = f"NEWS: {d['news']}
+METRICS: {d['keyMetrics']}
+ANALYST VIEW: {d['analystView']}
+SHAREHOLDING: {d['shareholding']}
+TECHNICAL: {d['technical']}"
         sentiment = get_sentiment(info_text)
         iv = intrinsic_value(d['eps'], d['pe'], d['bookValue'], d['sector'])
         concall_summary = analyze_concall(ticker)
+
+        roe = d['keyMetrics'].get('profitability', {}).get('returnOnEquity', 'NA')
+        dy = d['keyMetrics'].get('dividend', {}).get('dividendYield', 'NA')
+        de_ratio = d['keyMetrics'].get('solvency', {}).get('debtToEquity', 'NA')
 
         return {
             "ticker": ticker,
@@ -149,7 +158,10 @@ def analyze_stock(ticker):
             "concall": concall_summary,
             "pe": d['pe'],
             "bookValue": d['bookValue'],
-            "eps": d['eps']
+            "eps": d['eps'],
+            "roe": roe,
+            "dividendYield": dy,
+            "debtEquity": de_ratio
         }
     except Exception as e:
         return {"ticker": ticker, "error": str(e)}
@@ -182,5 +194,6 @@ if input_str:
                 st.write(f"**P/E:** {r['pe']}  |  **Book Value:** {r['bookValue']}  |  **EPS:** {r['eps']}")
                 st.write(f"**Sentiment & Summary:** {r['sentiment']}")
                 st.write(f"**Shareholding Pattern:** {r['shareholding']}")
+                st.write(f"**ROE:** {r['roe']} | **Div Yield:** {r['dividendYield']} | **Debt/Equity:** {r['debtEquity']}")
                 st.write(f"**Earnings Call Summary:** {r['concall']}")
                 st.markdown("---")
