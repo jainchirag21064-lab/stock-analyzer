@@ -61,7 +61,8 @@ def fetch_stock_data(ticker):
     company_name = data.get("companyName", "")
     eps = extract_eps(data.get("financials", []))
     metrics = extract_metrics_from_keymetrics(data.get("keyMetrics", {}))
-    price = float(data.get("currentPrice", {}).get("NSE") or data.get("currentPrice", {}).get("BSE") or 0.0)    return {
+    price = float(data.get("currentPrice", {}).get("NSE") or data.get("currentPrice", {}).get("BSE") or 0.0)    
+    return {
         "ticker": ticker,
         "companyName": company_name,
         "sector": data.get("industry", ""),
