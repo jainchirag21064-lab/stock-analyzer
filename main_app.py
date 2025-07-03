@@ -7,8 +7,10 @@
 import os
 import requests
 import pandas as pd
-from langchain import OpenAI, LLMChain, PromptTemplate
-from langchain.chat_models import ChatOpenAI
+from langchain_openai import OpenAI
+from langchain_core.prompts import PromptTemplate
+from langchain.chains import LLMChain
+from langchain_community.chat_models import ChatOpenAI
 from googlesearch import search
 from bs4 import BeautifulSoup
 import streamlit as st
