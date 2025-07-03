@@ -7,7 +7,7 @@ import openai
 import newspaper
 from newspaper import Article
 
-openai.api_key = ""
+openai.api_key = "tes"
 
 st.set_page_config(page_title="Agentic AI Stock Analyzer", layout="wide")
 st.title("📈 Agentic AI Stock Analyzer")
