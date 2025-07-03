@@ -61,9 +61,7 @@ def fetch_stock_data(ticker):
     company_name = data.get("companyName", "")
     eps = extract_eps(data.get("financials", []))
     metrics = extract_metrics_from_keymetrics(data.get("keyMetrics", {}))
-    price = float(data.get("currentPrice", {}).get("NSE") or data.get("currentPrice", {}).get("BSE") or 0.0)    
-    
-    return {
+    price = float(data.get("currentPrice", {}).get("NSE") or data.get("currentPrice", {}).get("BSE") or 0.0)    return {
         "ticker": ticker,
         "companyName": company_name,
         "sector": data.get("industry", ""),
@@ -134,11 +132,7 @@ def intrinsic_value(eps, pe, book, sector):
 def analyze_stock(ticker):
     try:
         d = fetch_stock_data(ticker)
-        info_text = f"NEWS: {d['news']}
-METRICS: {d['keyMetrics']}
-ANALYST VIEW: {d['analystView']}
-SHAREHOLDING: {d['shareholding']}
-TECHNICAL: {d['technical']}"
+        info_text = f"NEWS: {d['news']} METRICS: {d['keyMetrics']} ANALYST VIEW: {d['analystView']}SHAREHOLDING: {d['shareholding']}TECHNICAL: {d['technical']}"
         sentiment = get_sentiment(info_text)
         iv = intrinsic_value(d['eps'], d['pe'], d['bookValue'], d['sector'])
         concall_summary = analyze_concall(ticker)
