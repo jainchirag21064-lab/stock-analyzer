@@ -14,12 +14,16 @@ from langchain_core.runnables import RunnableSequence
 from googlesearch import search
 from bs4 import BeautifulSoup
 import streamlit as st
+from langchain_ollama import ChatOllama
 
+from dotenv import load_dotenv
+load_dotenv()
 # --- Configuration ---
 API_KEY = os.getenv("INDIAN_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
 llm = OpenAI(temperature=0)
+# llm = ChatOllama(model="llama3.2:1b")
 
 # --- Data Extraction Helpers ---
 def extract_eps(financials):
@@ -31,47 +35,60 @@ def extract_eps(financials):
         except: continue
     return 0
 
-def extract_metrics_from_keymetrics(key_metrics):
-    growth = key_metrics.get("growth", {})
-    valuation = key_metrics.get("valuation", {})
+def extract_metrics_from_reusable_data(stockDetailsReusableData,company_name):
+
+    peerCompanyList = stockDetailsReusableData.get("peerCompanyList", {})
+    # Using list comprehension to find the company
+    company_info = next(
+        (company for company in peerCompanyList if company["companyName"] in company_name),
+        None
+    )
     return {
-        'peRatio': float(growth.get('priceToEarnings', 12) or 12),
-        'bookValue': float(valuation.get('bookValuePerShare', 100) or 100)
+        'peRatio': float(company_info.get('priceToEarningsValueRatio', 12) or 12),
+        'bookValue': float(company_info.get('priceToBookValueRatio', 100) or 100),
+        'price': float(company_info.get('price', 100) or 100)
     }
-    return {'peRatio': 12, 'bookValue': 100}
+    return {'peRatio': 12, 'bookValue': 100,'price':100}
 
 def extract_news(news_list):
+    # Check if news_list is None
+    if news_list is None:
+        return None
+
+    # Proceed with extracting news if news_list is not None
     return " ".join([f"{n['title']}: {n['description']}" for n in news_list])
 
 def extract_shareholding_info(data):
     if not data: return ""
     parts = []
     for item in data:
-        parts.append(f"{item['name']}: {item['percentage']}%")
+        parts.append(f"{item['categoryName']}: {item['categories']}")
     return ", ".join(parts)
 
 # --- API Integration ---
 def fetch_stock_data(ticker):
-    url = f"https://indianapi.in/indian-stock-market/stock?name={ticker}"
-    headers = {"Authorization": f"Bearer {API_KEY}"}
-    r = requests.get(url, headers=headers)
+    
+    print("fetch_stock_data --",ticker)
+    url = f"https://stock.indianapi.in/stock?name={ticker}"
+    headers = {"x-api-key": f"{API_KEY}"}
+    r = requests.get(url, headers=headers,verify=False)
     r.raise_for_status()
     data = r.json()
 
     company_name = data.get("companyName", "")
     eps = extract_eps(data.get("financials", []))
-    metrics = extract_metrics_from_keymetrics(data.get("keyMetrics", {}))
-    price = float(data.get("currentPrice", {}).get("NSE") or data.get("currentPrice", {}).get("BSE") or 0.0)    
+    metrics = extract_metrics_from_reusable_data(data.get("stockDetailsReusableData", {}),company_name)
+
     return {
         "ticker": ticker,
         "companyName": company_name,
         "sector": data.get("industry", ""),
-        "price": price,
+        "price": metrics['price'],
         "eps": eps,
         "pe": metrics['peRatio'],
         "bookValue": metrics['bookValue'],
-        "news": extract_news(data.get("recentNews", [])),
-        "shareholding": extract_shareholding_info(data.get("shareholding", {}).get("data", [])),
+        "news": extract_news(data.get("recentNews", {})),
+        "shareholding": extract_shareholding_info(data.get("shareholding", {})),
         "technical": data.get("stockTechnicalData", {}),
         "keyMetrics": data.get("keyMetrics", {}),
         "analystView": data.get("analystView", {}),
@@ -89,10 +106,11 @@ Based on the following news, key metrics, and recent developments, classify this
 sentiment_chain = sentiment_prompt | llm
 
 def get_sentiment(text):
-    return sentiment_chain.invoke({"text": text}).strip()
+    print("get_sentiment")
+    return sentiment_chain.invoke({"text": text})
 
 def scrape_web_info(query):
-    links = list(search(query, num_results=3))
+    links = list(search(query, num_results=3,ssl_verify=False))
     summaries = []
     for url in links:
         try:
@@ -112,19 +130,21 @@ Based on the following earnings call transcript or management commentary, what a
 concall_chain = concall_prompt | llm
 
 def analyze_concall(ticker):
+    print("analyze_concall")
     query = f"{ticker} latest earnings call transcript site:moneycontrol.com OR site:business-standard.com"
     content = scrape_web_info(query)
     if content:
-        return concall_chain.invoke({"transcript": content}).strip()
+        return concall_chain.invoke({"transcript": content})
     return "No transcript data found."
 
 # --- Valuation ---
 def intrinsic_value(eps, pe, book, sector):
-    if sector.lower() in ["it", "technology"]:
+    print("intrinsic_value --",eps, pe, book, sector)
+    if sector is not None and sector.lower() in ["it", "technology"]:
         return eps * 18  # Higher PE for tech growth
-    elif sector.lower() in ["banking", "finance"]:
+    elif sector is not None and sector.lower() in ["banking", "finance"]:
         return book * 1.5  # Slightly higher than historical P/B
-    elif sector.lower() in ["energy", "commodities"]:
+    elif sector is not None and sector.lower() in ["energy", "commodities"]:
         return eps * 8  # Lower PE due to cyclical nature
     else:
         return eps * pe
@@ -136,6 +156,7 @@ def analyze_stock(ticker):
         info_text = f"NEWS: {d['news']} METRICS: {d['keyMetrics']} ANALYST VIEW: {d['analystView']}SHAREHOLDING: {d['shareholding']}TECHNICAL: {d['technical']}"
         sentiment = get_sentiment(info_text)
         iv = intrinsic_value(d['eps'], d['pe'], d['bookValue'], d['sector'])
+        print("intrinsic_value --",iv)
         concall_summary = analyze_concall(ticker)
 
         roe = d['keyMetrics'].get('profitability', {}).get('returnOnEquity', 'NA')
@@ -165,7 +186,9 @@ def analyze_stock(ticker):
 # --- Aggregator ---
 def run_analysis(tickers):
     results = [analyze_stock(t.strip()) for t in tickers]
+    print("run_analysis ==",results)
     df = pd.DataFrame(results)
+    print("df ===",df)
     if "error" in df.columns:
         df = df[df["error"].isna()]
     df["score"] = ((df["intrinsic"] > df["price"]).astype(int) + df["sentiment"].str.contains("Bullish").astype(int))
