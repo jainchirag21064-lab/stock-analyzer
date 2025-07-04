@@ -14,7 +14,7 @@ from langchain_core.runnables import RunnableSequence
 from googlesearch import search
 from bs4 import BeautifulSoup
 import streamlit as st
-from langchain_ollama import ChatOllama
+# from langchain_ollama import ChatOllama
 
 from dotenv import load_dotenv
 load_dotenv()
