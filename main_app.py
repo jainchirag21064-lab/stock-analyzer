@@ -19,9 +19,10 @@ import streamlit as st
 from dotenv import load_dotenv
 load_dotenv()
 # --- Configuration ---
+openai_api_key = st.sidebar.text_input("OpenAI API Key", type="password")
 API_KEY = os.getenv("INDIAN_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
+# OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
 llm = OpenAI(temperature=0)
 # llm = ChatOllama(model="llama3.2:1b")
 
